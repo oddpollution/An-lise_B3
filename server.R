@@ -30,7 +30,7 @@ library(lubridate)
 # Define server logic required to draw a histogram
 shinyServer(function(input, output) {
 
-   options(shiny.maxRequestSize=300*1024^2)
+   options(shiny.maxRequestSize=3000*1024^2)
    
 ######################################### IMPORT BASE #########################################
 
@@ -522,7 +522,7 @@ stockcheck <- eventReactive(input$stock, {
    
 })
 
-#Download Exemplo#
+################################### Download Exemplo ###################################
 
 output$exmpl <- downloadHandler(
    filename = function() {
@@ -533,7 +533,7 @@ output$exmpl <- downloadHandler(
    }
 )
 
-#Outputs#
+ ################################### Outputs ###################################
 
 observeEvent(input$button, {output$Base_B3 <- DT::renderDataTable({datatable(Base())})})
 #observeEvent(input$stckdireto, {output$Base_B3 <- DT::renderDataTable({Base1()})})
