@@ -26,19 +26,46 @@ library(shinythemes)
 library(forecast)
 library(shinycssloaders)
 library(lubridate)
+library(RMySQL)
+library(corrplot)
+library(rstatix)
 
 # Define server logic required to draw a histogram
-shinyServer(function(input, output) {
+shinyServer(function(input, output, session) {
 
    options(shiny.maxRequestSize=3000*1024^2)
-   
-######################################### IMPORT BASE #########################################
+
+###################################### AJUSTA WIDGETS ######################################
+  
+     
+  observeEvent(input$min, {
+    updateSliderInput(inputId = "limitador", min = input$min)
+  })  
+  observeEvent(input$max, {
+    updateSliderInput(inputId = "limitador", max = input$max)
+  })
+  
+  observeEvent(input$upload, {
+    # TRUE if input$controller is even, FALSE otherwise.
+    x_even <- ifelse(input$upload == TRUE,FALSE,TRUE)
+
+    updateCheckboxInput(session, "mysql", value = x_even)
+      
+  })
+  
+######################################## IMPORT BASE #########################################
 
    Base <- eventReactive(input$button, {
-      validate(
+      
+     #### UPLOAD ARQUIVO ####
+
+     if (input$upload == "Upload do arquivo") {
+       
+     validate(
          need(input$file1 != "", "Por favor, inserir o arquivo baixado da B3 e tratado previamente ou selecionar as ações no campo AÇÕES!")
       )
-      base <- as.data.frame(read.csv(input$file1$datapath,sep=",", encoding = "UTF-8"))
+     
+      base <- as.data.frame(read.csv(input$file1$datapath,sep=";", encoding = "UTF-8"))
       
       base$CODBDI <- str_replace(base$CODBDI,",",".")
       base$CODBDI <- as.numeric(base$CODBDI)
@@ -67,57 +94,251 @@ shinyServer(function(input, output) {
       base$VOLTOT <- str_replace(base$VOLTOT,",",".")
       base$VOLTOT <- as.numeric(base$VOLTOT)
       
-      base$DT_PREGAO <- ymd(base$DT_PREGAO)
+      # base$DT_PREGAO <- ymd(base$DT_PREGAO)
       
       ativo <- as.numeric(input$tp_ativo)
       
       ifelse(ativo==0,
              base01 <- base %>% 
-               dplyr::mutate(PREABE = PREABE/100, PREMAX = PREMAX/100, PREMIN = PREMIN/100, 
-                    PREMED = PREMED/100, PREULT = PREULT/100) %>% 
-               dplyr::mutate(VARIACAO = (PREULT-PREABE)/PREABE,  PER_VOLUME = QUATOT/VOLTOT) %>% 
+               dplyr::mutate(PREABE = PREABE/100, 
+                             PREMAX = PREMAX/100, 
+                             PREMIN = PREMIN/100,
+                             PREMED = PREMED/100,
+                             PREULT = PREULT/100,
+                             VARIACAO = (PREULT-PREABE)/PREABE,
+                             PER_VOLUME = QUATOT/VOLTOT) %>% 
                dplyr::filter(PREULT<=input$limitador),
                   base01 <- base %>% 
-                  dplyr::mutate(PREABE = PREABE/100, PREMAX = PREMAX/100, PREMIN = PREMIN/100, 
-                         PREMED = PREMED/100, PREULT = PREULT/100) %>% 
-                  dplyr::mutate(VARIACAO = ((PREULT-PREABE)/PREABE)*100,  
-                         PER_VOLUME = print(TOTNEG/QUATOT), digits=8) %>% 
-                  dplyr::filter(CODBDI==ativo) %>% 
-                  dplyr::filter(PREULT<=input$limitador))
+                  dplyr::mutate(PREABE = PREABE/100, 
+                                PREMAX = PREMAX/100, 
+                                PREMIN = PREMIN/100,
+                                PREMED = PREMED/100, 
+                                PREULT = PREULT/100,
+                                VARIACAO = ((PREULT-PREABE)/PREABE)*100,
+                                PER_VOLUME = TOTNEG/QUATOT) %>% 
+                  dplyr::filter(CODBDI==ativo,
+                                PREULT<=input$limitador))
       
       base01 <- as.data.frame(base01)
       
-      base01[is.na(base01)] <- 0
+      base01[is.na(base01)] <- 0}
+     
+     else {
+       
+       if (input$upload == "Conexão banco de dados MySQL") {
+         
+             db_user <- input$db_user
+             db_password <- input$db_password
+             db_name <- input$db_name
+             db_table <- input$db_table
+             db_host <- input$db_host
+             db_port <- as.numeric(input$db_port)
+
+             mydb <-  dbConnect(MySQL(), user = db_user, password = db_password,
+                                dbname = db_name, host = db_host, port = db_port)
+             s <- paste0("select * from ", db_table)
+             # s <- paste0("select * from ", db_table," where DT_PREGAO >= '",input$dtstckselect[1],"' and DT_PREGAO <= '",input$dtstckselect[2], "'")
+             rs <- dbSendQuery(mydb, s)
+             base <- dbFetch(rs, n = -1)
+
+             base$CODBDI <- str_replace(base$CODBDI,",",".")
+             base$CODBDI <- as.numeric(base$CODBDI)
+
+             base$TPMERC <- str_replace(base$TPMERC,",",".")
+             base$TPMERC <- as.numeric(base$TPMERC)
+
+             base$PREABE <- str_replace(base$PREABE,",",".")
+             base$PREABE <- as.numeric(base$PREABE)
+
+             base$PREMAX <- str_replace(base$PREMAX,",",".")
+             base$PREMAX <- as.numeric(base$PREMAX)
+
+             base$PREMED <- str_replace(base$PREMED,",",".")
+             base$PREMED <- as.numeric(base$PREMED)
+
+             base$PREMIN <- str_replace(base$PREMIN,",",".")
+             base$PREMIN <- as.numeric(base$PREMIN)
+
+             base$PREULT <- str_replace(base$PREULT,",",".")
+             base$PREULT <- as.numeric(base$PREULT)
+
+             base$QUATOT <- str_replace(base$QUATOT,",",".")
+             base$QUATOT <- as.numeric(base$QUATOT)
+             
+             base$TOTNEG <- str_replace(base$TOTNEG,",",".")
+             base$TOTNEG <- as.numeric(base$TOTNEG)
+             
+             base$VOLTOT <- str_replace(base$VOLTOT,",",".")
+             base$VOLTOT <- as.numeric(base$VOLTOT)
+
+             # base$DT_PREGAO <- ymd(base$DT_PREGAO)
+
+            ativo <- as.numeric(input$tp_ativo)
+
+             ifelse(ativo==0,
+                    base01 <- base %>%
+                      dplyr::mutate(PREABE = PREABE/100, 
+                                    PREMAX = PREMAX/100, 
+                                    PREMIN = PREMIN/100,
+                                    PREMED = PREMED/100, 
+                                    PREULT = PREULT/100,
+                                    VARIACAO = (PREULT-PREABE)/PREABE,  
+                                    PER_VOLUME = QUATOT/VOLTOT) %>%
+                      dplyr::filter(PREULT<=input$limitador),
+                    base01 <- base %>%
+                      dplyr::mutate(PREABE = PREABE/100, 
+                                    PREMAX = PREMAX/100, 
+                                    PREMIN = PREMIN/100,
+                                    PREMED = PREMED/100, 
+                                    PREULT = PREULT/100,
+                                    VARIACAO = ((PREULT-PREABE)/PREABE)*100,
+                                    PER_VOLUME = TOTNEG/QUATOT) %>%
+                      dplyr::filter(CODBDI==ativo,
+                                    PREULT<=input$limitador,
+                                    DT_PREGAO >= input$dtstckselect1[1]))
+
+             base01 <- as.data.frame(base01)
+
+             base01[is.na(base01)] <- 0
+         
+             on.exit(dbDisconnect(mydb))
+             
+             rm(base)
+             gc()
+             
+       }
+       
+     }
       
       return(base01)
       
    })
+  
+#### Alimentação dos inputs ####
+  
+  stockfeed <- reactive({
+      vstock <- Base() %>% dplyr::select(CODNEG)
+
+      vstock <- unique(vstock)
+      vstock <- c(unlist(vstock))
+      names(vstock) <- vstock
+
+      return(vstock)
+      
+  })
+        
+  observe({
+    updatePickerInput(
+      session,
+      "stck_select",
+      choices=names(stockfeed()))
+    
+  })
+  
+  observe({
+    updatePickerInput(
+      session,
+      "nomestck",
+      choices=names(stockfeed()))
+    
+  })
+  
+#### MYSQL ####
+     
+   #    Base0 <- eventReactive(input$button, {
+   #    
+   #     db_user <- input$db_user
+   #     db_password <- input$db_password
+   #     db_name <- input$db_name
+   #     db_table <- input$db_table
+   #     db_host <- input$db_host
+   #     db_port <- as.numeric(input$db_port)
+   #     
+   #     mydb <-  dbConnect(MySQL(), user = db_user, password = db_password,
+   #                        dbname = db_name, host = db_host, port = db_port)
+   #     s <- paste0("select * from ", db_table)
+   #     rs <- dbSendQuery(mydb, s)
+   #     base <-  fetch(rs, n = -1)
+   #     on.exit(dbDisconnect(mydb))
+   #     
+   #     base$CODBDI <- str_replace(base$CODBDI,",",".")
+   #     base$CODBDI <- as.numeric(base$CODBDI)
+   #     
+   #     base$TPMERC <- str_replace(base$TPMERC,",",".")
+   #     base$TPMERC <- as.numeric(base$TPMERC)
+   #     
+   #     base$PREABE <- str_replace(base$PREABE,",",".")
+   #     base$PREABE <- as.numeric(base$PREABE)
+   #     
+   #     base$PREMAX <- str_replace(base$PREMAX,",",".")
+   #     base$PREMAX <- as.numeric(base$PREMAX)
+   #     
+   #     base$PREMED <- str_replace(base$PREMED,",",".")
+   #     base$PREMED <- as.numeric(base$PREMED)
+   #     
+   #     base$PREMIN <- str_replace(base$PREMIN,",",".")
+   #     base$PREMIN <- as.numeric(base$PREMIN)
+   #     
+   #     base$PREULT <- str_replace(base$PREULT,",",".")
+   #     base$PREULT <- as.numeric(base$PREULT)
+   #     
+   #     base$QUATOT <- str_replace(base$QUATOT,",",".")
+   #     base$QUATOT <- as.numeric(base$QUATOT)
+   #     
+   #     base$VOLTOT <- str_replace(base$VOLTOT,",",".")
+   #     base$VOLTOT <- as.numeric(base$VOLTOT)
+   #     
+   #     base$DT_PREGAO <- ymd(base$DT_PREGAO)
+   #     
+   #     ativo <- as.numeric(input$tp_ativo)
+   #     
+   #     ifelse(ativo==0,
+   #            base01 <- base %>% 
+   #              dplyr::mutate(PREABE = PREABE/100, PREMAX = PREMAX/100, PREMIN = PREMIN/100, 
+   #                            PREMED = PREMED/100, PREULT = PREULT/100) %>% 
+   #              dplyr::mutate(VARIACAO = (PREULT-PREABE)/PREABE,  PER_VOLUME = QUATOT/VOLTOT) %>% 
+   #              dplyr::filter(PREULT<=input$limitador),
+   #            base01 <- base %>% 
+   #              dplyr::mutate(PREABE = PREABE/100, PREMAX = PREMAX/100, PREMIN = PREMIN/100, 
+   #                            PREMED = PREMED/100, PREULT = PREULT/100) %>% 
+   #              dplyr::mutate(VARIACAO = ((PREULT-PREABE)/PREABE)*100,  
+   #                            PER_VOLUME = print(TOTNEG/QUATOT), digits=8) %>% 
+   #              dplyr::filter(CODBDI==ativo) %>% 
+   #              dplyr::filter(PREULT<=input$limitador))
+   #     
+   #     base01 <- as.data.frame(base01)
+   #     
+   #     base01[is.na(base01)] <- 0
+   #     
+   #   return(base01)
+   #    
+   # })
    
- Base1 <- eventReactive(input$stckdireto, {
-
-    bg <- input$dtstckselect[1]
-    lst <- input$dtstckselect[2]
-    base <- as.data.frame(read.csv(input$file1$datapath,sep=";", encoding = "UTF-8"))
-    base$DT_PREGAO <- as.Date.POSIXct(paste0(substr(base$DT_PREGAO,7,10),"/",substr(base$DT_PREGAO,4,6),substr(base$DT_PREGAO,1,2)),"%Y-%m-%d", origin = "1984-01-01")
-
-    ifelse(bg==lst,
-           base <- base %>% dplyr::filter(DT_PREGAO >= bg),
-           base <- base %>% dplyr::filter(DT_PREGAO >= bg & DT_PREGAO <= ls))
-
-    base <- as.data.frame(base[2])
-
-    colnames(base) <- c("PREABE", "PREMAX", "PREMIN", "PREULT", "VOLTOT", "PREAJUST", "DT_PREGAO", "CODNEG", "PREOFC", "PREOFV")
-
-    base01 <- base %>%
-       mutate(VARIACAO = (PREULT-PREABE)/PREABE)
-
-    base01 <- as.data.frame(base01)
-
-    base01[is.na(base01)] <- 0
-
-    return(base01)
-
- })
+ # Base1 <- eventReactive(input$stckdireto, {
+ # 
+ #    bg <- input$dtstckselect[1]
+ #    lst <- input$dtstckselect[2]
+ #    base <- as.data.frame(read.csv(input$file1$datapath,sep=";", encoding = "UTF-8"))
+ #    base$DT_PREGAO <- as.Date.POSIXct(paste0(substr(base$DT_PREGAO,7,10),"/",substr(base$DT_PREGAO,4,6),substr(base$DT_PREGAO,1,2)),"%Y-%m-%d", origin = "1984-01-01")
+ # 
+ #    ifelse(bg==lst,
+ #           base <- base %>% dplyr::filter(DT_PREGAO >= bg),
+ #           base <- base %>% dplyr::filter(DT_PREGAO >= bg & DT_PREGAO <= ls))
+ # 
+ #    base <- as.data.frame(base[2])
+ # 
+ #    colnames(base) <- c("PREABE", "PREMAX", "PREMIN", "PREULT", "VOLTOT", "PREAJUST", "DT_PREGAO", "CODNEG", "PREOFC", "PREOFV")
+ # 
+ #    base01 <- base %>%
+ #       mutate(VARIACAO = (PREULT-PREABE)/PREABE)
+ # 
+ #    base01 <- as.data.frame(base01)
+ # 
+ #    base01[is.na(base01)] <- 0
+ # 
+ #    return(base01)
+ # 
+ # })
  # 
  #Input
  
@@ -322,7 +543,7 @@ rank_desc <- eventReactive(input$button, {
 
 ################################# Gráfico Ações #################################
 
-################################# ARIMA #################################
+  ################################# ARIMA #################################
 
 stockcheck <- eventReactive(input$stock, {
    
@@ -336,7 +557,9 @@ stockcheck <- eventReactive(input$stock, {
    #                       first.date = bg,last.date = lst)
    
    # tabelastck <- as.data.frame(data[2])
-   
+
+   data$DT_PREGAO <- as.Date(data$DT_PREGAO)
+      
    tabelastck <- data %>% dplyr::select(DT_PREGAO, PREABE, PREMAX, PREMIN, PREULT, VOLTOT, DT_PREGAO, CODNEG) %>% dplyr::filter(CODNEG == input$nomestck)
 
    #BASE DE AÇÕES#
@@ -381,13 +604,13 @@ stockcheck <- eventReactive(input$stock, {
   
    #Gráfico#
    
-   fig <- plot_ly(base_arima, x = ~base_arima$df.tickers.ref.date, y = ~base_arima$df.tickers.price.high, type = 'scatter', mode = 'lines',
+   fig <- plot_ly(base_arima, x = ~base_arima$df.tickers.ref.date, y = ~base_arima$PREMAX, type = 'scatter', mode = 'lines',
                   line = list(color = 'transparent'),
                   showlegend = FALSE, name = 'High') 
-   fig <- fig %>% add_trace(y = ~base_arima$df.tickers.price.low, type = 'scatter', mode = 'lines',
+   fig <- fig %>% add_trace(y = ~base_arima$PREMIN, type = 'scatter', mode = 'lines',
                             fill = 'tonexty', fillcolor='rgba(0,100,80,0.2)', line = list(color = 'transparent'),
                             showlegend = FALSE, name = 'Low') 
-   fig <- fig %>% add_trace(x = ~base_arima$df.tickers.ref.date, y = ~base_arima$df.tickers.price.close, type = 'scatter', mode = 'lines',
+   fig <- fig %>% add_trace(x = ~base_arima$df.tickers.ref.date, y = ~base_arima$PREABE, type = 'scatter', mode = 'lines',
                             line = list(color='rgb(0,100,80)'),
                             name = 'Close') 
    fig <- fig %>% layout(title = paste("Preço de ações ao longo do tempo",input$nomestck),
@@ -412,7 +635,7 @@ stockcheck <- eventReactive(input$stock, {
    fig
    },
    
-   ################################# GBM #################################
+    ################################# GBM #################################
    
                ifelse(input$tp_modelo == 2, 
                    
@@ -422,7 +645,7 @@ stockcheck <- eventReactive(input$stock, {
                    # heads <- paste(heads, sep = "", ".SA")
                    
                    # BVSP <- BatchGetSymbols(tickers = heads, bench.ticker = '^BVSP', first.date = bg,last.date = lst)
-                   BVSP <- data %>% dplyr::select(PREABE, PREMAX, PREMIN, PREULT, VOLTOT, DT_PREGAO, CODNEG)
+                   BVSP <- data %>% dplyr::select(PREABE, PREMAX, PREMIN, PREULT, VOLTOT, DT_PREGAO, CODNEG, VARIACAO)
                    
                    # BVSP1 <- as.data.frame(BVSP[2])
                    
@@ -440,7 +663,7 @@ stockcheck <- eventReactive(input$stock, {
                    mean <- mean(Mandela)
                    sigma <- sd(ret_acao)/sqrt(as.integer(lst-bg))
                    
-                   Rf <- 0.1375
+                   Rf <- input$selic
                    B <- var(ret_acao)/var(Fec_BVSP)
                    Rm <- Rf  + B * (retorno_mercado - Rf)
                    
@@ -451,8 +674,7 @@ stockcheck <- eventReactive(input$stock, {
                    interval<-1/count
                    sample <- matrix(0,nrow=(count+1),ncol=paths)
                    sample[1,] <- as.data.frame(ret_acao)[nrow(as.data.frame(ret_acao)),1]
-                   for(i in 1:paths)
-                   {
+                   for(i in 1:paths) {
                       #    sample[1,i]<- as.data.frame(ret_acao)[nrow(as.data.frame(ret_acao)),1]
                       for(j in 2:(count+1))
                       {
@@ -505,23 +727,217 @@ stockcheck <- eventReactive(input$stock, {
                    fig
                    
                    },
+                   
+                   ################################# HISTÓRICO #################################
+                   
                         ifelse(input$tp_modelo == 3,
                                {
-                                  fig <- tabelastck %>% plot_ly(x = ~tabelastck$DT_PREGAO, type="candlestick",
-                                    open = ~tabelastck$PREABE, close = ~tabelastck$PREULT,
-                                    high = ~tabelastck$PREMAX, low = ~tabelastck$PREMIN) 
-                                  fig <- fig %>% layout(title = paste("Preço de ações ao longo do tempo",input$nomestck))
+                                  fig <- tabelastck %>% plot_ly(x = ~tabelastck$DT_PREGAO, 
+                                                                type="candlestick",
+                                                                open = ~tabelastck$PREABE, 
+                                                                close = ~tabelastck$PREULT,
+                                                                high = ~tabelastck$PREMAX, 
+                                                                low = ~tabelastck$PREMIN) 
+                                  fig <- fig %>% 
+                          layout(title = paste("Preço de ações ao longo do tempo",input$nomestck))
                                   
-                                  fig
-                              }
-                              )
-                   )
-   )
+                                  fig})))
    
    return(fig)
    
 })
 
+################################### Fronteira Eficiente ###################################
+ 
+ mkwz <- eventReactive(input$workmark, {
+
+ ############### Environments ################
+
+   #list for raw data
+   data <- new.env(parent=emptyenv())
+   #list for full dataset (from raw data)
+   data_full <- new.env(parent=emptyenv())
+   #list with parameters
+   parameters <- new.env(parent=emptyenv())
+
+   ############## base de dados ################
+
+  base <- Base()
+   
+  fator_ativos <- data.frame(input$stck_select)
+  
+  nomes <- unlist(c(fator_ativos))
+   
+  base1 <- matrix(data = 0, 1, 1)
+  base1 <- as.data.frame(base1)
+  
+  base <- Base()
+  
+  for (i in 1:nrow(fator_ativos)) {
+    
+    ativo <- base %>% dplyr::filter(CODNEG == fator_ativos[i,]) %>% dplyr::select(PREULT)
+    
+    base1$row <- rownames(base1)    
+    ativo$row <- rownames(ativo)
+    base1 <-merge(base1,ativo, by='row', all=T)
+    base1 <- base1[,-1]  
+    
+  }
+  
+  base1 <- base1[,-1]
+  
+  colnames(base1) <- nomes
+  
+  base1[is.na(base1)] <- 0
+  
+  ############## list for full dataset (from raw data) ################
+  
+  data_full$asset_base <- base1
+  
+  data_fullst <- eapply(data_full, "[")
+  
+  ############## list for raw data ################
+  
+  total_assets <- nrow(fator_ativos)
+  
+  parameters$mean <- matrix(0,total_assets,1)
+  
+  for (i in 1:total_assets) {
+    
+    parameters$mean[i] <- mean(base1[,i])
+    
+  }
+  
+  paramlst <- eapply(parameters, "[")
+  
+  # e$meanA <- mean(datalst[1][[1]])
+  # e$meanB <- mean(datalst[2][[1]])
+  # e$meanC <- mean(datalst[3][[1]])
+  
+  parameters$var <- matrix(0,total_assets,1)
+  
+  for (i in 1:total_assets) {
+    
+    parameters$var[i] <- var(base1[,i])
+    
+  }
+  
+  paramlst <- eapply(parameters, "[")
+  
+  # e$varA <- var(datalst[1][[1]])
+  # e$varB <- var(datalst[2][[1]])
+  # e$varC <- var(datalst[3][[1]])
+  
+  parameters$correl <- matrix(0,total_assets,total_assets)
+  
+  parameters$correl <- cor(base1)
+  
+  # parameters$correl <- unique(c(cor(data_fullst[1][[1]])))
+  
+  # parameters$correl <- parameters$correl[-1]
+  
+  paramlst <- eapply(parameters, "[")
+  
+  # e$AB <- cor(elst[1][[1]],elst[2][[1]])
+  # e$AC <- cor(elst[1][[1]],elst[3][[1]])
+  # e$BC <- cor(elst[2][[1]],elst[3][[1]])
+  
+  #elst <- eapply(e, "[")
+  
+  weights <- as.data.frame(matrix(0,10000,total_assets))
+  invest_return <- as.data.frame(matrix(0,10000,1))
+  invest_return1 <- as.data.frame(matrix(0,10000,total_assets))
+  invest_risk <- as.data.frame(matrix(0,10000,1))
+  invest_risk1 <- as.data.frame(matrix(0,10000,total_assets))
+  
+  for (i in 1:nrow(weights)) {
+    
+    weights[i,] <- rlnorm(total_assets,0,1)
+    weights[i,] <- (weights[i,]/sum(weights[i,]))
+    
+    for (j in 1:total_assets) {
+      
+      invest_return1[i,j] <- weights[i,j] * paramlst$mean[j,1]
+      
+      invest_risk1[i,j] <- weights[i,j]^2 * paramlst$var[j,1] + 2 * weights[i,ifelse(j == total_assets, 1,j)] * weights[i,ifelse(j < total_assets, j+1,j)] * sqrt(paramlst$var[ifelse(j == total_assets, 1,j),1]) * sqrt(paramlst$var[ifelse(j < total_assets, j+1,j),1]) * paramlst$correl[ifelse(j == total_assets, 1,j),ifelse(j < total_assets, j+1,j)]
+      
+      # invest_risk1[i,1] <- weights[i,1]^2 * e$varA +
+      #                       weights[i,2]^2 * e$varB +
+      #                       weights[i,3]^2 * e$varC +
+      #                       2 * weights[i,1] * weights[i,2] * sqrt(e$varA) * sqrt(e$varB) * e$AB +
+      #                       2 * weights[i,2] * weights[i,3] * sqrt(e$varB) * sqrt(e$varC) * e$BC +
+      #                       2 * weights[i,1] * weights[i,3] * sqrt(e$varA) * sqrt(e$varC) * e$AC
+      
+      
+    }
+    
+    invest_return[i,1] <- sum(invest_return1[i,])
+    invest_risk[i,1] <- sum(invest_risk1[i,])
+    
+  }
+  
+  colname <- c("w1")
+  
+  for (i in 1:total_assets) {
+    
+    colname <- cbind(colname,paste0(fator_ativos[i,]))
+    
+  }
+  
+  colname <- unique(colname)[-c(1)]
+  
+  colname <- c("retorno","risco",colname)
+  
+  colname <- unique(colname)
+  
+  result <- as.data.frame(cbind(invest_return,invest_risk,weights)) 
+  
+  colnames(result) <- c(colname)
+  
+  result <- result %>% mutate(sharpe = (retorno-input$selic)/risco) %>% arrange(desc(sharpe))
+  
+  # elst <- eapply(e, "[")
+  
+  # plot(x = result$retorno, y = result$risco)
+  
+  # fig <- plot_ly(result, x = ~retorno, y = ~retorno, name = 'trace 0', type = 'scatter', mode = 'markers')
+  # fig <- fig %>% add_trace(y = ~sharpe, name = 'trace 1', mode = 'lines')
+  # 
+  # fig
+  # 
+  # elected <- result %>% filter(sharpe == max(sharpe))
+  # 
+  # elected <- as.data.frame(elected)
+
+  return(result)
+  
+  gc()
+  
+  # return(elected)
+
+ })
+
+ mkwzResult <- eventReactive(input$workmark, {
+   
+   result <- mkwz()
+   
+   elected <- result %>% filter(sharpe == max(sharpe))
+   
+   elected <- as.data.frame(elected)
+   
+ })
+ 
+ mkwzPlot <- eventReactive(input$workmark, {
+   
+   result <- mkwz()
+   
+   fig <- plot_ly(result, x = ~retorno, y = ~retorno, name = 'trace 0', type = 'scatter', mode = 'markers')
+   fig <- fig %>% add_trace(y = ~sharpe, name = 'trace 1', mode = 'lines')
+   
+   fig
+   
+ })
+  
 ################################### Download Exemplo ###################################
 
 output$exmpl <- downloadHandler(
@@ -533,7 +949,7 @@ output$exmpl <- downloadHandler(
    }
 )
 
- ################################### Outputs ###################################
+################################### Outputs ###################################
 
 observeEvent(input$button, {output$Base_B3 <- DT::renderDataTable({datatable(Base())})})
 #observeEvent(input$stckdireto, {output$Base_B3 <- DT::renderDataTable({Base1()})})
@@ -545,6 +961,9 @@ observeEvent(input$button, {output$RANK <- renderPlot({rank()})})
 
 observeEvent(input$button, {output$RANK1 <- renderPlot({rank_desc()})})
 #observeEvent(input$stckdireto, {output$RANK1 <- renderPlot({rank_desc1()})})
+
+observeEvent(input$workmark, {output$strategy <- DT::renderDataTable({mkwzResult()})})
+observeEvent(input$workmark, {output$mark_line <- renderPlotly({mkwzPlot()})})
 
 output$stck <- renderPlotly({stockcheck()})
  
