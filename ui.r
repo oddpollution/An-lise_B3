@@ -26,7 +26,8 @@ library(plotly)
 library(openssl)
 library(shinybusy)
 library(shinyWidgets)
-library(readr)
+library(RMySQL)
+library(plotly)
 
 rsconnect::setAccountInfo(name='seagullskf', token='54D077C2B3987ED60247EACF0EF288CA', secret='HPYlykFEOnR4ENEv7rOFS/iJil6qkVU2eU2v87fh')
 
@@ -46,55 +47,112 @@ shinyUI(fluidPage(theme = shinytheme("journal"),
     # Sidebar with a slider input for number of bins
     sidebarLayout(
         sidebarPanel(
-            p("Upload arquivo de cotações históricas baixado no site da B3", style = "font-family: 'arial'; font-si10pt"),
+            p(h5("Exemplo de arquivo de cotações históricas baixado no site da B3"), style = "font-family: 'arial'; font-si10pt"),
             
             hr(),
             
-            fileInput("file1", "Inserir arquivo CSV tratado previamente",
-                      multiple = FALSE,
-                      accept = c("text/csv",
-                                 "text/comma-separated-values,text/plain",
-                                 ".csv")),
+            # fileInput("file1", "Inserir arquivo CSV tratado previamente",
+            #           multiple = FALSE,
+            #           accept = c("text/csv",
+            #                      "text/comma-separated-values,text/plain",
+            #                      ".csv")),
             downloadButton("exmpl", "Baixar arquivo exemplo da B3"),
             
+            # hr(),
+            # 
+            # p(h5("Upload de arquivo de cotações históricas baixado no site da B3"), style = "font-family: 'arial'; font-si10pt"),
+            # 
+            # # UPLOAD DA BASE
+            # checkboxInput("upload", "Upload da base"),
+            # conditionalPanel(
+            #   condition = "input.upload == true",
+            #   fileInput("file1", "Inserir arquivo CSV tratado previamente",
+            #             multiple = FALSE,
+            #             accept = c("text/csv",
+            #                        "text/comma-separated-values,text/plain",
+            #                        ".csv"))
+            # ),
+            
             hr(),
             
-            p("Opções de consulta", style = "font-family: 'arial'; font-si10pt"),
+            p(h5("Upload de arquivo ou conexão com servidor MySQL para obter arquivo de cotações históricas baixado no site da B3"), style = "font-family: 'arial'; font-si10pt"),
+
+            # Conexão SQL
+            selectInput("upload", 
+                        label = "Opção para upload da base", 
+                        choices = c("Upload do arquivo",
+                                       "Conexão banco de dados MySQL"), 
+                        selected = "Upload do arquivo"),
+            conditionalPanel(
+              condition = "input.upload == 'Upload do arquivo'",
+              fileInput("file1", "Inserir arquivo CSV tratado previamente",
+                        multiple = FALSE,
+                        accept = c("text/csv",
+                                   "text/comma-separated-values,text/plain",
+                                   ".csv"))),
+            conditionalPanel(
+              condition = "input.upload == 'Conexão banco de dados MySQL'",
+              textInput("db_user","Usuário do Banco de Dados", value = "root"),
+              passwordInput("db_password","Senha do Banco de Dados", value = "********"),
+              textInput("db_name","Nome do Banco de Dados", value = ""),
+              textInput("db_table","Tabela do Banco de Dados", value = ""),
+              textInput("db_host","IP do Banco de Dados", value = "127.0.0.1"),
+              textInput("db_port","Port do Banco de Dados", value = "3306")
+            ),
+            
+            hr(),
+            
+            p(h5("Opções de consulta"), style = "font-family: 'arial'; font-si10pt"),
             
             hr(),
             
             selectInput("tp_ativo", label = "Tipo de Ativo", choices = list("Ação"=2,"Fundos Imobiliários"=12, "Certificados de Investimentos"=14, "TUDO" = 0), selected = 0),
+            numericInput("min", "Minimum", 0),
+            numericInput("max", "Maximum", 100),
             sliderInput("limitador", "Limitador de Preço do Ativo:",
                         min = 0, max = 999999, value = c(10), step = 10, dragRange = TRUE),
+            numericInput("selic", "SELIC:", 0.10, min = 0, max = 0.99,step = 0.001),
+            dateRangeInput("dtstckselect1", "Período de análise", start = Sys.Date()-1, end = Sys.Date()-1, format = "dd/mm/yy", separator = " / "),
+            
+            hr(),
+            
             actionButton("button", "Consultar a Base"),
             actionButton("tabelao", "Consultar Codigos"),
             
             hr(),
             
-            p("Consulta base apenas ações", style = "font-family: 'arial'; font-si10pt"),
+            p(h5("Seleção de possíveis ativos para portfolio"), style = "font-family: 'arial'; font-si10pt"),
             
             hr(),
             
-            pickerInput("stck_select", "AÇÕES", unique(c(base_diaria1$CODNEG)), multiple = TRUE, selected = "Favor Selecionar para sua análise", list(`actions-box` = TRUE,
+            checkboxInput("conditional_Markowitz", label = "Habilitar análise de Portfólio"),
+            
+            conditionalPanel(
+              condition = "input.conditional_Markowitz == 1",
+            pickerInput(inputId = "stck_select",label = "Ações", "", multiple = TRUE, selected = "Favor Selecionar para sua análise", list(`actions-box` = TRUE,
                         `live-search` = TRUE,
                         `deselect-all-text` = "Limpar a seleção",
                         `select-all-text` = "Seleção completa",
                         `none-selected-text` = "Favor Selecionar para sua análise"
             ), width = 250),
             
-            dateRangeInput("dtstckselect", "Período de análise", start = Sys.Date()-1, end = Sys.Date()-1, format = "dd/mm/yy", separator = " / "),
+            # dateRangeInput("dtstckselect", "Período de análise", start = Sys.Date()-1, end = Sys.Date()-1, format = "dd/mm/yy", separator = " / "),
             
             hr(),            
             
-            #actionButton("stckdireto", "Consultar Base Ações"),
+            actionButton("workmark", "Gerar Portfolio Eficiente")),
             
             hr(),
           
-            p("Análise histórica e preditiva do Papel", style = "font-family: 'arial'; font-si10pt"),
+            p(h5("Análise histórica e preditiva do Papel"), style = "font-family: 'arial'; font-si10pt"),
             
             hr(),
             
-            textInput("nomestck", label = h3("Nome da Ação"), value = "Inserir código do papel!"),
+            checkboxInput("conditional_Prediction", label = "Habilitar análise de Preditiva"),
+            
+            conditionalPanel(
+              condition = "input.conditional_Prediction == 1",
+            pickerInput(inputId = "nomestck", label = "Nome da Ação","", multiple = FALSE, selected = "Favor Selecionar para sua análise", list(`actions-box` = TRUE, `live-search` = TRUE, `deselect-all-text` = "Limpar a seleção", `none-selected-text` = "Favor Selecionar para sua análise"), width = 250),
             
             selectInput("tp_modelo", label = "Tipo de Modelo Preditivo", choices = list("ARIMA"=1,"Geometric Brownian Motion"=2, "Histórico" = 3), selected = 3),
             
@@ -102,7 +160,7 @@ shinyUI(fluidPage(theme = shinytheme("journal"),
             
             dateRangeInput("dtstck", "Período de análise", start = Sys.Date() - 365, end = Sys.Date(), format = "dd/mm/yy", separator = " / "),
             
-            actionButton("stock", "Consultar Ação")
+            actionButton("stock", "Consultar Ação"))
             ),
 
         # Show a plot of the generated distribution
@@ -116,7 +174,12 @@ shinyUI(fluidPage(theme = shinytheme("journal"),
             
             tabPanel("CONSULTA HISTÓRICO AÇÃO",plotlyOutput("stck")),
             
-            tabPanel("CÓDIGOS B3",dataTableOutput("CODS"))
+            tabPanel("CÓDIGOS B3",dataTableOutput("CODS")),
+
+            # tabPanel("PORTFOLIO EFICIENTE",dataTableOutput("strategy"))
+                        
+            tabPanel("PORTFOLIO EFICIENTE",fluidRow(plotlyOutput("mark_line")),
+                                           fluidRow(dataTableOutput("strategy")))
             )
                      )
             )
