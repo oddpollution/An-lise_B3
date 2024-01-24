@@ -850,31 +850,56 @@ stockcheck <- eventReactive(input$stock, {
   invest_risk <- as.data.frame(matrix(0,10000,1))
   invest_risk1 <- as.data.frame(matrix(0,10000,total_assets))
   
-  for (i in 1:nrow(weights)) {
-    
-    weights[i,] <- rlnorm(total_assets,0,1)
-    weights[i,] <- (weights[i,]/sum(weights[i,]))
-    
-    for (j in 1:total_assets) {
-      
-      invest_return1[i,j] <- weights[i,j] * paramlst$mean[j,1]
-      
-      invest_risk1[i,j] <- weights[i,j]^2 * paramlst$var[j,1] + 2 * weights[i,ifelse(j == total_assets, 1,j)] * weights[i,ifelse(j < total_assets, j+1,j)] * sqrt(paramlst$var[ifelse(j == total_assets, 1,j),1]) * sqrt(paramlst$var[ifelse(j < total_assets, j+1,j),1]) * paramlst$correl[ifelse(j == total_assets, 1,j),ifelse(j < total_assets, j+1,j)]
-      
-      # invest_risk1[i,1] <- weights[i,1]^2 * e$varA +
-      #                       weights[i,2]^2 * e$varB +
-      #                       weights[i,3]^2 * e$varC +
-      #                       2 * weights[i,1] * weights[i,2] * sqrt(e$varA) * sqrt(e$varB) * e$AB +
-      #                       2 * weights[i,2] * weights[i,3] * sqrt(e$varB) * sqrt(e$varC) * e$BC +
-      #                       2 * weights[i,1] * weights[i,3] * sqrt(e$varA) * sqrt(e$varC) * e$AC
-      
-      
-    }
-    
-    invest_return[i,1] <- sum(invest_return1[i,])
-    invest_risk[i,1] <- sum(invest_risk1[i,])
-    
+  for (i in 1:total_assets) {
+
+    weights[,i] <- rlnorm(nrow(weights),0,1)
+
   }
+
+  weights <- weights/rowSums(weights)
+
+  for (i in 1:total_assets) {
+
+    invest_return1[,i] <- weights[,i] * paramlst$mean[i,1]
+
+    invest_risk1[,i] <- weights[,i]^2 * paramlst$var[i,1] + 2 * weights[,ifelse(i == total_assets, 1,i)] * weights[,ifelse(i < total_assets, i+1,i)] * sqrt(paramlst$var[ifelse(i == total_assets, 1,i),1]) * sqrt(paramlst$var[ifelse(i < total_assets, i+1,i),1]) * paramlst$correl[ifelse(i == total_assets, 1,i),ifelse(i < total_assets, i+1,i)]
+
+
+
+  }
+
+  invest_return <- rowSums(invest_return1)
+  invest_risk <- rowSums(invest_risk1)
+
+  invest_return <- as.data.frame(invest_return)
+  invest_risk <- as.data.frame(invest_risk)
+
+  
+  # for (i in 1:nrow(weights)) {
+  # 
+  #   weights[i,] <- rlnorm(total_assets,0,1)
+  #   weights[i,] <- (weights[i,]/sum(weights[i,]))
+  # 
+  #   for (j in 1:total_assets) {
+  # 
+  #     invest_return1[i,j] <- weights[i,j] * paramlst$mean[j,1]
+  # 
+  #     invest_risk1[i,j] <- weights[i,j]^2 * paramlst$var[j,1] + 2 * weights[i,ifelse(j == total_assets, 1,j)] * weights[i,ifelse(j < total_assets, j+1,j)] * sqrt(paramlst$var[ifelse(j == total_assets, 1,j),1]) * sqrt(paramlst$var[ifelse(j < total_assets, j+1,j),1]) * paramlst$correl[ifelse(j == total_assets, 1,j),ifelse(j < total_assets, j+1,j)]
+  # 
+  #     # invest_risk1[i,1] <- weights[i,1]^2 * e$varA +
+  #     #                       weights[i,2]^2 * e$varB +
+  #     #                       weights[i,3]^2 * e$varC +
+  #     #                       2 * weights[i,1] * weights[i,2] * sqrt(e$varA) * sqrt(e$varB) * e$AB +
+  #     #                       2 * weights[i,2] * weights[i,3] * sqrt(e$varB) * sqrt(e$varC) * e$BC +
+  #     #                       2 * weights[i,1] * weights[i,3] * sqrt(e$varA) * sqrt(e$varC) * e$AC
+  # 
+  # 
+  #   }
+  # 
+  #   invest_return[i,1] <- sum(invest_return1[i,])
+  #   invest_risk[i,1] <- sum(invest_risk1[i,])
+  # 
+  # }
   
   colname <- c("w1")
   
